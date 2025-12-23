@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>Air Travel Tracker</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin:0; height:100vh; display:flex; flex-direction:column; }
+  header { padding:12px 20px; background:#0f172a; color:#e5e7eb; }
+  header h1 { margin:0; font-size:20px; }
+  header small { color:#9ca3af; }
+  #main { flex:1; display:flex; min-height:0; }
+  #left { width:40%; border-right:1px solid #e5e7eb; padding:10px 12px; overflow-y:auto; }
+  #right { flex:1; padding:10px 16px; overflow-y:auto; }
+  .item { padding:6px 8px; border-radius:6px; border:1px solid transparent; margin-bottom:6px; font-size:14px; }
+  .item:hover { background:#f3f4f6; cursor:pointer; }
+  .item.active { background:#e0f2fe; border-color:#38bdf8; }
+  .callsign { font-weight:600; margin-right:4px; }
+  .country { color:#4b5563; margin-right:4px; }
+  .location { color:#6b7280; }
+  #status { font-size:12px; color:#6b7280; margin-bottom:6px; }
+  #detail { border-radius:8px; border:1px solid #e5e7eb; padding:10px 12px; font-size:14px; margin-bottom:10px; display:none; }
+  #detail h2 { margin-top:0; font-size:16px; margin-bottom:6px; }
+  .field-label { font-weight:600; color:#374151; }
+  .field-row { margin-bottom:4px; }
+  #log-wrapper { display:none; }
+  #log { border-radius:8px; border:1px solid #e5e7eb; padding:8px 10px; font-size:12px; height:160px; overflow-y:auto; background:#f9fafb; }
+  #log-title { font-size:13px; font-weight:600; margin-bottom:4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Air Travel Tracker <small>- 世界の空を旅しよう ✈️</small></h1>
+</header>
+
+<div id="main">
+  <div id="left">
+    <h3>現在飛行中の機体一覧</h3>
+    <div id="planes">読み込み中...</div>
+  </div>
+
+  <div id="right">
+    <div id="status">機体を選択すると、ここに詳細が表示されます。</div>
+
+    <div id="map" style="width:100%; height:260px; margin:8px 0; border-radius:8px; border:1px solid #e5e7eb;"></div>
+
+    <div id="detail">
+      <h2 id="detail-title"></h2>
+      <div class="field-row"><span class="field-label">国籍:</span> <span id="detail-country"></span></div>
+      <div class="field-row"><span class="field-label">現在位置:</span> <span id="detail-location"></span></div>
+      <div class="field-row"><span class="field-label">高度(m):</span> <span id="detail-alt"></span></div>
+      <div class="field-row"><span class="field-label">速度(m/s):</span> <span id="detail-vel"></span></div>
+      <div class="field-row"><span class="field-label">方位(度):</span> <span id="detail-heading"></span></div>
+      <div class="field-row"><span class="field-label">垂直速度(m/s):</span> <span id="detail-vrate"></span></div>
+      <div class="field-row"><span class="field-label">最終更新:</span> <span id="detail-updated"></span></div>
+      <hr />
+      <div class="field-row"><span class="field-label">窓からの景色イメージ:</span><br/><span id="detail-comment"></span></div>
+    </div>
+
+    <div id="log-wrapper">
+      <div id="log-title">旅のログ</div>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = "http://127.0.0.1:8000";
+const REFRESH_MS = 20000;
+
+let planesCache = [];
+let selectedCallsign = null;
+let trackTimerId = null;
+
+let map = null;
+let mapMarker = null;
+
+function initMap() {
+  if (map) return;
+  map = L.map("map").setView([35.0, 135.0], 4);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
+  }).addTo(map);
+}
+
+function updateMap(state) {
+  if (!map) initMap();
+  const lat = Number(state.latitude);
+  const lon = Number(state.longitude);
+  if (Number.isNaN(lat) || Number.isNaN(lon)) return;
+
+  if (mapMarker) {
+    mapMarker.setLatLng([lat, lon]);
+  } else {
+    mapMarker = L.marker([lat, lon]).addTo(map);
+  }
+  map.setView([lat, lon], 6);
+}
+
+async function loadPlanes() {
+  const res = await fetch(API_BASE + "/planes");
+  planesCache = await res.json();
+  renderPlaneList();
+}
+
+function renderPlaneList() {
+  const container = document.getElementById("planes");
+  if (!planesCache.length) {
+    container.textContent = "現在、一覧を取得できませんでした。";
+    return;
+  }
+  let html = "";
+  planesCache.forEach(p => {
+    const activeClass = (p.callsign === selectedCallsign) ? "item active" : "item";
+    html += `
+      <div class="${activeClass}" onclick="selectPlane('${p.callsign}')">
+        <span class="callsign">${p.callsign}</span>
+        <span class="country">${p.origin_country}</span>
+        <span class="location">｜ ${p.rough_location}</span>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+async function selectPlane(callsign) {
+  selectedCallsign = callsign;
+  renderPlaneList();
+
+  if (trackTimerId !== null) {
+    clearInterval(trackTimerId);
+    trackTimerId = null;
+  }
+  await fetchAndRenderTrack();
+  trackTimerId = setInterval(fetchAndRenderTrack, REFRESH_MS);
+}
+
+async function fetchAndRenderTrack() {
+  if (!selectedCallsign) return;
+
+  const statusEl = document.getElementById("status");
+  statusEl.textContent = `機体 ${selectedCallsign} を追跡中…`;
+
+  const res = await fetch(`${API_BASE}/track/${encodeURIComponent(selectedCallsign)}`);
+  const data = await res.json();
+
+  if (data.error) {
+    statusEl.textContent = `機体 ${selectedCallsign} は現在見つかりません（到着済み・カバー外など）。`;
+    return;
+  }
+  renderDetail(data);
+  updateMap(data);
+  appendLog(data);
+}
+
+function renderDetail(state) {
+  document.getElementById("detail").style.display = "block";
+  document.getElementById("log-wrapper").style.display = "block";
+
+  document.getElementById("detail-title").textContent = `CallSign: ${state.callsign}（${state.icao24}）`;
+  document.getElementById("detail-country").textContent = state.origin_country || "-";
+  document.getElementById("detail-location").textContent = state.location_text || "-";
+
+  const altStr = (state.geo_altitude ?? state.baro_altitude ?? "N/A");
+  document.getElementById("detail-alt").textContent = altStr;
+  document.getElementById("detail-vel").textContent = state.velocity ?? "N/A";
+  document.getElementById("detail-heading").textContent = state.heading ?? "N/A";
+  document.getElementById("detail-vrate").textContent = state.vertical_rate ?? "N/A";
+  document.getElementById("detail-updated").textContent = state.last_contact ?? "-";
+  document.getElementById("detail-comment").textContent = state.comment_text || "";
+}
+
+function appendLog(state) {
+  const logBox = document.getElementById("log");
+  const time = state.last_contact || "time N/A";
+  const loc = state.location_text || "";
+  const alt = state.geo_altitude ?? state.baro_altitude ?? "N/A";
+
+  const line = document.createElement("div");
+  line.textContent = `${time} ｜ ${loc} ｜ 高度: ${alt}`;
+  logBox.appendChild(line);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+initMap();
+loadPlanes();
+</script>
+
+</body>
+</html>

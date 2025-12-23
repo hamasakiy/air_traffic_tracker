@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# venv
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# snapshots（残したいなら消してOK）
+opensky_states_snapshot.json
