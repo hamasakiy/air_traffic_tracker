@@ -1,149 +1,142 @@
 # src/app.py
 import json
+import time
+from pathlib import Path
 from urllib.request import urlopen, Request
-from urllib.parse import urlencode
+from urllib.error import HTTPError, URLError
 
-OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
-MAX_LIST = 30
+OPENSKY_URL = "https://opensky-network.org/api/states/all"
 
-# ---- ざっくりエリア判定（最小） ----
-REGION_BOXES = [
-    ("日本付近", 20.0, 50.0, 120.0, 150.0),
-    ("韓国付近", 33.0, 39.5, 124.0, 132.0),
-    ("中国東部付近", 20.0, 42.0, 105.0, 125.0),
-    ("ドイツ付近", 47.0, 56.0, 5.0, 16.0),
-    ("フランス付近", 42.0, 51.5, -5.0, 8.0),
-    ("イギリス付近", 49.0, 61.0, -10.0, 2.0),
-    ("ヨーロッパ西部付近", 35.0, 70.0, -10.0, 30.0),
-    ("北米西海岸付近", 30.0, 55.0, -135.0, -110.0),
-    ("北米中部付近", 30.0, 55.0, -110.0, -85.0),
-    ("北米東海岸付近", 30.0, 50.0, -85.0, -60.0),
-    ("中東付近", 15.0, 40.0, 30.0, 60.0),
-    ("東南アジア付近", -10.0, 25.0, 95.0, 130.0),
-    ("オーストラリア付近", -45.0, -10.0, 110.0, 155.0),
-]
+# ===== 429 対策：TTL キャッシュ =====
+CACHE_TTL_SEC = 30  # まずは30秒推奨（必要なら 15〜60 で調整）
+_cached_states = None
+_cached_at = 0.0
 
-def rough_location(lat, lon, origin_country=None):
-    if lat is None or lon is None:
-        return "位置不明"
-    try:
-        lat = float(lat); lon = float(lon)
-    except Exception:
-        return "位置不明"
+# ===== フォールバック：同梱スナップショット =====
+SNAPSHOT_PATH = Path(__file__).with_name("opensky_states_snapshot.json")
 
-    for name, lat_min, lat_max, lon_min, lon_max in REGION_BOXES:
-        if lat_min <= lat <= lat_max and lon_min <= lon <= lon_max:
-            return name
 
-    if origin_country:
-        return f"{origin_country} 付近"
-    return f"緯度 {lat:.1f}°, 経度 {lon:.1f}° 付近"
+def _load_snapshot():
+    if SNAPSHOT_PATH.exists():
+        return json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    return None
 
-def make_simple_comment(alt_m, vel, vert_rate):
-    if alt_m is None:
-        return "高度情報がないため、詳しい景色は推定できません。"
-    try:
-        alt_ft = float(alt_m) * 3.28084
-    except Exception:
-        return "高度情報がないため、詳しい景色は推定できません。"
 
-    if alt_ft < 1000:
-        return "滑走路付近か、離着陸の直前・直後の高度かもしれません。"
-    elif alt_ft < 10000:
-        return "まだ上昇中で、地形や街並みがかなりはっきり見えていそうです。"
-    elif alt_ft < 25000:
-        return "雲の合間から、地上の街や山が時々見えるような高度を飛行中だと思われます。"
-    else:
-        return "雲の上を巡航中で、窓の外は青い空と雲のじゅうたんが広がっていそうです。"
-
-def fetch_opensky_states_all():
-    req = Request(OPENSKY_STATES_URL, headers={"User-Agent": "air-traffic-tracker/0.1"})
+def _fetch_opensky_raw():
+    req = Request(OPENSKY_URL, headers={"User-Agent": "air-traffic-tracker/0.1"})
     with urlopen(req, timeout=15) as r:
         return json.loads(r.read().decode("utf-8"))
 
-def response(status, body_obj):
+
+def get_states_json():
+    """
+    OpenSky の /states/all を取得（TTL キャッシュ + フォールバック付き）
+    """
+    global _cached_states, _cached_at
+
+    now = time.time()
+    if _cached_states is not None and (now - _cached_at) < CACHE_TTL_SEC:
+        return _cached_states, "cache"
+
+    try:
+        data = _fetch_opensky_raw()
+        _cached_states = data
+        _cached_at = now
+        return data, "live"
+
+    except HTTPError as e:
+        # 429 や 5xx など
+        snap = _load_snapshot()
+        if snap is not None:
+            return snap, f"snapshot(http:{e.code})"
+        raise
+
+    except (URLError, TimeoutError, Exception):
+        snap = _load_snapshot()
+        if snap is not None:
+            return snap, "snapshot(error)"
+        raise
+
+
+def to_plane_list(data, limit=30):
+    states = data.get("states") or []
+    result = []
+    for s in states:
+        # [icao24, callsign, origin_country, time_position, last_contact, lon, lat, ...]
+        callsign = (s[1] or "").strip()
+        if not callsign:
+            continue
+        result.append({
+            "icao24": s[0],
+            "callsign": callsign,
+            "origin_country": s[2],
+            "time_position": s[3],
+            "last_contact": s[4],
+            "longitude": s[5],
+            "latitude": s[6],
+        })
+        if len(result) >= limit:
+            break
+    return result
+
+
+def find_by_icao24(data, icao24: str):
+    icao24 = (icao24 or "").strip().lower()
+    if not icao24:
+        return None
+
+    states = data.get("states") or []
+    for s in states:
+        if (s[0] or "").lower() == icao24:
+            callsign = (s[1] or "").strip()
+            return {
+                "icao24": s[0],
+                "callsign": callsign,
+                "origin_country": s[2],
+                "time_position": s[3],
+                "last_contact": s[4],
+                "longitude": s[5],
+                "latitude": s[6],
+                "baro_altitude": s[7],
+                "on_ground": s[8],
+                "velocity": s[9],
+                "heading": s[10],
+                "vertical_rate": s[11],
+                "geo_altitude": s[13],
+            }
+    return None
+
+
+def _resp(status, obj):
     return {
         "statusCode": status,
-        "headers": {
-            "Content-Type": "application/json; charset=utf-8",
-            "Access-Control-Allow-Origin": "*",
-        },
-        "body": json.dumps(body_obj, ensure_ascii=False),
+        "headers": {"Content-Type": "application/json; charset=utf-8"},
+        "body": json.dumps(obj, ensure_ascii=False),
     }
 
+
 def lambda_handler(event, context):
-    path = event.get("rawPath") or event.get("path") or "/"
-    q = event.get("queryStringParameters") or {}
-    # /planes : 候補一覧
-    if path == "/" or path == "/planes":
-        try:
-            data = fetch_opensky_states_all()
-            states = data.get("states") or []
-            result = []
-            for s in states:
-                callsign = (s[1] or "").strip()
-                if not callsign:
-                    continue
-                result.append({
-                    "icao24": s[0],
-                    "callsign": callsign,
-                    "origin_country": s[2],
-                    "time_position": s[3],
-                    "last_contact": s[4],
-                    "longitude": s[5],
-                    "latitude": s[6],
-                    "on_ground": bool(s[8]),
-                    "rough_location": rough_location(s[6], s[5], origin_country=s[2]),
-                })
-                if len(result) >= MAX_LIST:
-                    break
-            return response(200, result)
-        except Exception as e:
-            return response(500, {"message": "Internal server error", "error": str(e)})
+    path = (event.get("path") or "").lower()
+    qs = event.get("queryStringParameters") or {}
 
-    # /track?icao24=xxxx : 1機だけ詳細
-    if path == "/track":
-        icao24 = (q.get("icao24") or "").strip().lower()
-        if not icao24:
-            return response(400, {"error": "icao24 is required. e.g. /track?icao24=4952ca"})
-        try:
-            data = fetch_opensky_states_all()
-            states = data.get("states") or []
-            for s in states:
-                if (s[0] or "").lower() != icao24:
-                    continue
+    try:
+        data, source = get_states_json()
 
-                callsign = (s[1] or "").strip()
-                origin = s[2]
-                lon = s[5]; lat = s[6]
-                baro_alt = s[7]
-                on_ground = bool(s[8])
-                vel = s[9]
-                heading = s[10]
-                vert_rate = s[11]
-                geo_alt = s[13]
-                alt_use = geo_alt if geo_alt is not None else baro_alt
+        # /planes
+        if path.endswith("/planes"):
+            planes = to_plane_list(data, limit=30)
+            return _resp(200, {"source": source, "count": len(planes), "planes": planes})
 
-                return response(200, {
-                    "icao24": s[0],
-                    "callsign": callsign,
-                    "origin_country": origin,
-                    "longitude": lon,
-                    "latitude": lat,
-                    "baro_altitude": baro_alt,
-                    "geo_altitude": geo_alt,
-                    "velocity": vel,
-                    "heading": heading,
-                    "vertical_rate": vert_rate,
-                    "on_ground": on_ground,
-                    "time_position": s[3],
-                    "last_contact": s[4],
-                    "location_text": rough_location(lat, lon, origin_country=origin),
-                    "comment_text": make_simple_comment(alt_use, vel, vert_rate),
-                })
+        # /track?icao24=xxxx
+        if path.endswith("/track"):
+            icao24 = (qs.get("icao24") or "").strip()
+            item = find_by_icao24(data, icao24)
+            if item is None:
+                return _resp(404, {"error": "not found", "icao24": icao24, "source": source})
+            return _resp(200, {"source": source, **item})
 
-            return response(404, {"error": "not found", "icao24": icao24})
-        except Exception as e:
-            return response(500, {"message": "Internal server error", "error": str(e)})
+        # それ以外
+        return _resp(404, {"error": "unknown path", "path": path})
 
-    return response(404, {"error": "not found", "path": path})
+    except Exception as e:
+        return _resp(500, {"error": str(e)})
