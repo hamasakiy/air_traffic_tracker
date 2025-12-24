@@ -1,0 +1,14 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "air-traffic-tracker"
+resolve_s3 = true
+s3_prefix = "air-traffic-tracker"
+region = "ap-northeast-1"
+profile = "AdministratorAccess-629065147680"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
+
+[default.global.parameters]
+region = "ap-northeast-1"

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Air Traffic Tracker</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 16px; }
+    button { padding: 8px 12px; cursor: pointer; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 10px; }
+    .muted { color: #666; }
+    pre { background: #f6f6f6; padding: 10px; border-radius: 10px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Air Traffic Tracker</h1>
+
+  <div class="row">
+    <button id="btnReload">/planes を再読み込み</button>
+    <span class="muted" id="status"></span>
+  </div>
+
+  <h2>いま飛んでいる機体（最大30）</h2>
+  <div id="list" class="grid"></div>
+
+  <h2>追跡（選択した機体を自動更新）</h2>
+  <div class="row">
+    <span>選択中: <b id="selected">なし</b></span>
+    <button id="btnStart" disabled>追跡開始</button>
+    <button id="btnStop" disabled>停止</button>
+    <span class="muted">更新間隔: 10秒</span>
+  </div>
+
+  <pre id="detail">{}</pre>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const listEl = document.getElementById("list");
+    const selectedEl = document.getElementById("selected");
+    const detailEl = document.getElementById("detail");
+    const btnStart = document.getElementById("btnStart");
+    const btnStop = document.getElementById("btnStop");
+
+    let selected = null;   // {icao24, callsign, ...}
+    let timer = null;
+
+    function setStatus(msg) { statusEl.textContent = msg; }
+
+    async function loadPlanes() {
+      setStatus("loading /planes ...");
+      listEl.innerHTML = "";
+      selected = null;
+      selectedEl.textContent = "なし";
+      btnStart.disabled = true;
+      btnStop.disabled = true;
+      detailEl.textContent = "{}";
+
+      const res = await fetch("/planes");
+      const data = await res.json();
+
+      setStatus(`loaded: ${data.length} planes`);
+      data.forEach((p, idx) => {
+        const div = document.createElement("div");
+        div.className = "card";
+        div.innerHTML = `
+          <div><b>[${idx}] ${p.callsign}</b> <spa
