@@ -2,67 +2,668 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Air Traffic Tracker</title>
+
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
   <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 16px; }
-    button { padding: 8px 12px; cursor: pointer; }
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
-    .card { border: 1px solid #ddd; border-radius: 10px; padding: 10px; }
-    .muted { color: #666; }
-    pre { background: #f6f6f6; padding: 10px; border-radius: 10px; overflow: auto; }
+    :root{
+      --bg:#0b1220;
+      --panel:#111a2b;
+      --panel2:#0f1728;
+      --text:#e7eefc;
+      --muted:#9fb0d0;
+      --line:rgba(255,255,255,.08);
+      --accent:#36d399;
+      --btn:#1a2740;
+      --btn2:#223357;
+      --danger:#ef4444;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif;
+      background: radial-gradient(1200px 600px at 50% 0%, rgba(59,130,246,.25), transparent 60%), var(--bg);
+      color:var(--text);
+    }
+    header{
+      padding:14px 18px;
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+    .logo{
+      width:34px;height:34px;border-radius:10px;
+      display:grid;place-items:center;
+      background:linear-gradient(135deg, rgba(59,130,246,.9), rgba(34,211,238,.7));
+      box-shadow:0 10px 30px rgba(0,0,0,.35);
+      font-weight:800;
+    }
+    .title{
+      display:flex;flex-direction:column;gap:2px;
+    }
+    .title h1{margin:0;font-size:18px;letter-spacing:.2px}
+    .title .sub{color:var(--muted);font-size:12px}
+    .spacer{flex:1}
+    .btn{
+      border:1px solid var(--line);
+      background:var(--btn);
+      color:var(--text);
+      border-radius:12px;
+      padding:10px 12px;
+      cursor:pointer;
+      font-weight:700;
+    }
+    .btn:hover{background:var(--btn2)}
+    .chip{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:6px 10px;border-radius:999px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.04);
+      color:var(--muted);
+      font-size:12px;
+      white-space:nowrap;
+    }
+    .chip b{color:var(--text)}
+    main{
+      padding:0 18px 18px;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: 420px 1fr;
+      gap:14px;
+      align-items:stretch;
+    }
+    .panel{
+      background:linear-gradient(180deg, rgba(255,255,255,.03), transparent 45%), var(--panel);
+      border:1px solid var(--line);
+      border-radius:18px;
+      box-shadow:0 20px 50px rgba(0,0,0,.35);
+      overflow:hidden;
+    }
+    .panel .head{
+      padding:12px 14px;
+      border-bottom:1px solid var(--line);
+      display:flex;align-items:center;gap:10px;
+    }
+    .panel .head h2{margin:0;font-size:14px;color:var(--text)}
+    .panel .body{padding:12px 14px}
+
+    /* stats cards */
+    .stats{
+      display:grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap:12px;
+      margin-bottom:14px;
+    }
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.03), transparent 50%), var(--panel2);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:12px 14px;
+      min-height:74px;
+      display:flex;flex-direction:column;justify-content:center;
+      gap:6px;
+    }
+    .card .k{color:var(--muted);font-size:12px}
+    .card .v{font-size:22px;font-weight:800;letter-spacing:.2px}
+    .card .u{color:var(--muted);font-size:12px}
+
+    /* list */
+    .row{
+      display:flex;gap:10px;align-items:center;
+    }
+    input[type="text"]{
+      width:100%;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(0,0,0,.18);
+      color:var(--text);
+      padding:10px 12px;
+      outline:none;
+    }
+    input[type="text"]::placeholder{color:rgba(231,238,252,.45)}
+    .small{color:var(--muted);font-size:12px}
+    table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      font-size:12px;
+    }
+    thead th{
+      position:sticky;
+      top:0;
+      background:rgba(10,16,28,.92);
+      backdrop-filter: blur(6px);
+      border-bottom:1px solid var(--line);
+      padding:10px 10px;
+      text-align:left;
+      color:var(--muted);
+      font-weight:700;
+      z-index:1;
+    }
+    tbody td{
+      border-bottom:1px solid rgba(255,255,255,.06);
+      padding:10px 10px;
+      color:var(--text);
+      vertical-align:middle;
+    }
+    tbody tr{
+      cursor:pointer;
+    }
+    tbody tr:hover{background:rgba(255,255,255,.05)}
+    tbody tr.selected{background:rgba(59,130,246,.18)}
+    .scroll{
+      height:62vh;
+      overflow:auto;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.06);
+      background:rgba(0,0,0,.12);
+    }
+
+    /* right side */
+    .rightWrap{
+      display:grid;
+      grid-template-rows: 360px 1fr;
+      gap:14px;
+    }
+    #map{
+      height:360px;
+      width:100%;
+    }
+    .detailGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+    }
+    .kv{
+      border:1px solid var(--line);
+      background:rgba(0,0,0,.14);
+      border-radius:14px;
+      padding:12px;
+      min-height:70px;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      gap:6px;
+    }
+    .kv .k{color:var(--muted);font-size:12px}
+    .kv .v{font-weight:800;font-size:16px}
+    .kv .s{color:var(--muted);font-size:12px}
+    .danger{background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.25)}
+    .ok{background:rgba(54,211,153,.10); border-color:rgba(54,211,153,.25)}
+
+    /* Leaflet plane icon */
+    .plane-icon{
+      background:transparent;
+      border:none;
+    }
+    .plane-icon-inner{
+      width:22px;height:22px;
+      display:grid;place-items:center;
+      border-radius:8px;
+      background:rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.18);
+      backdrop-filter: blur(4px);
+      font-size:14px;
+      line-height:1;
+    }
+    .plane-icon-inner.selected{
+      background:rgba(59,130,246,.25);
+      border-color:rgba(59,130,246,.45);
+    }
+
+    @media (max-width: 1100px){
+      .stats{grid-template-columns: repeat(2, minmax(0, 1fr));}
+      .grid{grid-template-columns: 1fr;}
+      .scroll{height:48vh;}
+      .rightWrap{grid-template-rows: 320px 1fr;}
+      #map{height:320px;}
+    }
   </style>
 </head>
 <body>
-  <h1>Air Traffic Tracker</h1>
+  <header>
+    <div class="logo">✈</div>
+    <div class="title">
+      <h1>Air Traffic Tracker</h1>
+    </div>
+    <div class="spacer"></div>
 
-  <div class="row">
-    <button id="btnReload">/planes を再読み込み</button>
-    <span class="muted" id="status"></span>
-  </div>
+    <span class="chip">source: <b id="chipSource">-</b></span>
+    <span class="chip">最終更新: <b id="chipTime">-</b></span>
+    <button class="btn" id="btnRefresh">更新</button>
+    <button class="btn" id="btnAuto">自動更新: OFF</button>
+    <button class="btn" id="btnTrack">追跡: OFF</button>
+  </header>
 
-  <h2>いま飛んでいる機体（最大30）</h2>
-  <div id="list" class="grid"></div>
+  <main>
+    <section class="stats">
+      <div class="card">
+        <div class="k">飛行中の航空機</div>
+        <div class="v" id="statCount">-</div>
+        <div class="u">表示中</div>
+      </div>
+      <div class="card">
+        <div class="k">国・地域数</div>
+        <div class="v" id="statCountries">-</div>
+        <div class="u">origin_country のユニーク数</div>
+      </div>
+      <div class="card">
+        <div class="k">平均高度</div>
+        <div class="v" id="statAlt">-</div>
+        <div class="u">m（geo優先 / baro）</div>
+      </div>
+      <div class="card">
+        <div class="k">平均速度</div>
+        <div class="v" id="statSpeed">-</div>
+        <div class="u">km/h（velocity m/s）</div>
+      </div>
+    </section>
 
-  <h2>追跡（選択した機体を自動更新）</h2>
-  <div class="row">
-    <span>選択中: <b id="selected">なし</b></span>
-    <button id="btnStart" disabled>追跡開始</button>
-    <button id="btnStop" disabled>停止</button>
-    <span class="muted">更新間隔: 10秒</span>
-  </div>
+    <section class="grid">
+      <!-- LEFT: list -->
+      <div class="panel">
+        <div class="head">
+          <h2>Flights</h2>
+          <div class="spacer"></div>
+          <span class="chip">表示: <b id="shownCount">-</b> / 全体: <b id="allCount">-</b></span>
+        </div>
+        <div class="body">
+          <div class="row" style="margin-bottom:10px">
+            <input id="q" type="text" placeholder="検索（callsign / 国 / icao24）" />
+          </div>
 
-  <pre id="detail">{}</pre>
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:90px">Callsign</th>
+                  <th>Country</th>
+                  <th style="width:74px">ICAO24</th>
+                  <th style="width:72px">Alt</th>
+                  <th style="width:72px">Speed</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
 
-  <script>
-    const statusEl = document.getElementById("status");
-    const listEl = document.getElementById("list");
-    const selectedEl = document.getElementById("selected");
-    const detailEl = document.getElementById("detail");
-    const btnStart = document.getElementById("btnStart");
-    const btnStop = document.getElementById("btnStop");
+          <div class="small" style="margin-top:10px" id="statusText">Ready.</div>
+        </div>
+      </div>
 
-    let selected = null;   // {icao24, callsign, ...}
-    let timer = null;
+      <!-- RIGHT: map + details -->
+      <div class="rightWrap">
+        <div class="panel">
+          <div class="head">
+            <h2>Map</h2>
+            <div class="spacer"></div>
+            <span class="chip">選択: <b id="selLabel">-</b></span>
+          </div>
+          <div class="body" style="padding:0">
+            <div id="map"></div>
+          </div>
+        </div>
 
-    function setStatus(msg) { statusEl.textContent = msg; }
+        <div class="panel">
+          <div class="head">
+            <h2>Selected Flight</h2>
+            <div class="spacer"></div>
+            <span class="chip" id="trackChip">tracking: <b>OFF</b></span>
+          </div>
+          <div class="body">
+            <div class="detailGrid">
+              <div class="kv"><div class="k">Callsign</div><div class="v" id="d_callsign">-</div><div class="s" id="d_icao24">-</div></div>
+              <div class="kv"><div class="k">Country</div><div class="v" id="d_country">-</div><div class="s" id="d_source">source: -</div></div>
 
-    async function loadPlanes() {
-      setStatus("loading /planes ...");
-      listEl.innerHTML = "";
-      selected = null;
-      selectedEl.textContent = "なし";
-      btnStart.disabled = true;
-      btnStop.disabled = true;
-      detailEl.textContent = "{}";
+              <div class="kv"><div class="k">Altitude</div><div class="v" id="d_alt">-</div><div class="s" id="d_alt2">-</div></div>
+              <div class="kv"><div class="k">Velocity</div><div class="v" id="d_vel">-</div><div class="s" id="d_vel2">-</div></div>
 
-      const res = await fetch("/planes");
-      const data = await res.json();
+              <div class="kv"><div class="k">Heading</div><div class="v" id="d_head">-</div><div class="s" id="d_vr">V-Rate: -</div></div>
+              <div class="kv"><div class="k">Position</div><div class="v" id="d_pos">-</div><div class="s" id="d_time">last_contact: -</div></div>
 
-      setStatus(`loaded: ${data.length} planes`);
-      data.forEach((p, idx) => {
-        const div = document.createElement("div");
-        div.className = "card";
-        div.innerHTML = `
-          <div><b>[${idx}] ${p.callsign}</b> <spa
+              <div class="kv ok" style="grid-column: 1 / -1;">
+                <div class="k">Note</div>
+                <div class="v" id="d_note" style="font-size:14px">左の一覧から機体をクリックすると、地図と詳細が更新されます。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script>
+  // API
+  const API_BASE = "https://cmlqosneb9.execute-api.ap-northeast-1.amazonaws.com/Prod/";
+  const PLANES_URL = API_BASE + "planes";
+  const TRACK_URL  = (icao24) => API_BASE + `track?icao24=${encodeURIComponent(icao24)}`;
+
+  // state
+  let planes = [];
+  let filtered = [];
+  let selectedIcao24 = null;
+
+  let autoTimer = null;
+  let trackTimer = null;
+  let autoOn = false;
+  let trackOn = false;
+
+  // map
+  let map, layerGroup;
+  const markers = new Map(); // icao24 -> marker
+
+  const el = (id) => document.getElementById(id);
+
+  function fmtNum(x, digits=1){
+    if (x === null || x === undefined) return "-";
+    const n = Number(x);
+    if (!Number.isFinite(n)) return "-";
+    return n.toFixed(digits);
+  }
+  function mpsToKmh(mps){
+    const n = Number(mps);
+    if (!Number.isFinite(n)) return null;
+    return n * 3.6;
+  }
+  function mToFt(m){
+    const n = Number(m);
+    if (!Number.isFinite(n)) return null;
+    return n * 3.28084;
+  }
+  function pickAlt(p){
+    // app.py側で geo_altitude を返している場合はそれを優先（無ければ baro_altitude）
+    const g = p.geo_altitude;
+    const b = p.baro_altitude;
+    if (Number.isFinite(Number(g))) return Number(g);
+    if (Number.isFinite(Number(b))) return Number(b);
+    return null;
+  }
+
+  function setStatus(msg){
+    el("statusText").textContent = msg;
+  }
+
+  function planeIcon(heading, selected=false){
+    const h = Number(heading);
+    const rot = Number.isFinite(h) ? h : 0;
+    const cls = selected ? "plane-icon-inner selected" : "plane-icon-inner";
+    return L.divIcon({
+      className: "plane-icon",
+      html: `<div class="${cls}"><span style="display:inline-block;transform:rotate(${rot}deg)">✈</span></div>`,
+      iconSize: [22,22],
+      iconAnchor: [11,11],
+      popupAnchor: [0,-10],
+    });
+  }
+
+  function initMap(){
+    map = L.map("map", { worldCopyJump: true }).setView([20, 0], 2);
+
+    // darkっぽい見た目にしたいので CARTO DarkMatter（無料）を使う
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap &copy; CARTO'
+    }).addTo(map);
+
+    layerGroup = L.layerGroup().addTo(map);
+  }
+
+  function upsertMarker(p){
+    const lat = Number(p.latitude);
+    const lon = Number(p.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+    const key = p.icao24;
+    const isSel = (key && selectedIcao24 && key.toLowerCase() === selectedIcao24.toLowerCase());
+
+    const title = `${p.callsign || "-"} (${p.icao24 || "-"})`;
+    let mk = markers.get(key);
+
+    if (!mk){
+      mk = L.marker([lat, lon], { icon: planeIcon(p.heading, isSel) });
+      mk.bindPopup(title);
+      mk.on("click", () => {
+        if (p.icao24) selectPlane(p.icao24);
+      });
+      mk.addTo(layerGroup);
+      markers.set(key, mk);
+    }else{
+      mk.setLatLng([lat, lon]);
+      mk.setIcon(planeIcon(p.heading, isSel));
+      mk.setPopupContent(title);
+    }
+  }
+
+  function refreshMarkers(){
+    // 表示中（filtered）だけマーカー更新・それ以外は消す
+    const keep = new Set(filtered.map(p => p.icao24));
+    for (const [k, mk] of markers.entries()){
+      if (!keep.has(k)){
+        layerGroup.removeLayer(mk);
+        markers.delete(k);
+      }
+    }
+    for (const p of filtered){
+      upsertMarker(p);
+    }
+  }
+
+  function renderStats(){
+    el("allCount").textContent = planes.length;
+    el("shownCount").textContent = filtered.length;
+    el("statCount").textContent = String(filtered.length);
+
+    const countries = new Set(filtered.map(p => p.origin_country).filter(Boolean));
+    el("statCountries").textContent = String(countries.size);
+
+    const alts = filtered.map(p => pickAlt(p)).filter(v => Number.isFinite(v));
+    const vels = filtered.map(p => mpsToKmh(p.velocity)).filter(v => Number.isFinite(v));
+
+    const avg = (arr) => arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+    const avgAlt = avg(alts);
+    const avgVel = avg(vels);
+
+    el("statAlt").textContent = avgAlt === null ? "-" : `${fmtNum(avgAlt,0)} m`;
+    el("statSpeed").textContent = avgVel === null ? "-" : `${fmtNum(avgVel,0)} km/h`;
+  }
+
+  function renderTable(){
+    const tb = el("tbody");
+    tb.innerHTML = "";
+
+    for (const p of filtered){
+      const tr = document.createElement("tr");
+      const isSel = selectedIcao24 && p.icao24 && p.icao24.toLowerCase() === selectedIcao24.toLowerCase();
+      if (isSel) tr.classList.add("selected");
+
+      const alt = pickAlt(p);
+      const kmh = mpsToKmh(p.velocity);
+
+      tr.innerHTML = `
+        <td><b>${(p.callsign || "-").toString()}</b></td>
+        <td>${(p.origin_country || "-").toString()}</td>
+        <td>${(p.icao24 || "-").toString()}</td>
+        <td>${alt === null ? "-" : fmtNum(alt,0) + " m"}</td>
+        <td>${kmh === null ? "-" : fmtNum(kmh,0) + " km/h"}</td>
+      `;
+      tr.addEventListener("click", () => {
+        if (p.icao24) selectPlane(p.icao24);
+      });
+      tb.appendChild(tr);
+    }
+
+    renderStats();
+    refreshMarkers();
+  }
+
+  function applyFilter(){
+    const q = (el("q").value || "").trim().toLowerCase();
+    if (!q){
+      filtered = planes.slice();
+    } else {
+      filtered = planes.filter(p => {
+        const a = (p.callsign || "").toLowerCase();
+        const b = (p.origin_country || "").toLowerCase();
+        const c = (p.icao24 || "").toLowerCase();
+        return a.includes(q) || b.includes(q) || c.includes(q);
+      });
+    }
+    renderTable();
+  }
+
+  function setDetailEmpty(note){
+    el("d_callsign").textContent = "-";
+    el("d_icao24").textContent = "-";
+    el("d_country").textContent = "-";
+    el("d_source").textContent = "source: -";
+    el("d_alt").textContent = "-";
+    el("d_alt2").textContent = "-";
+    el("d_vel").textContent = "-";
+    el("d_vel2").textContent = "-";
+    el("d_head").textContent = "-";
+    el("d_vr").textContent = "V-Rate: -";
+    el("d_pos").textContent = "-";
+    el("d_time").textContent = "last_contact: -";
+    el("d_note").textContent = note || "-";
+    el("selLabel").textContent = "-";
+  }
+
+  function renderDetail(obj){
+    const callsign = obj.callsign || "-";
+    const icao24 = obj.icao24 || "-";
+    el("d_callsign").textContent = callsign;
+    el("d_icao24").textContent = `ICAO24: ${icao24}`;
+    el("d_country").textContent = obj.origin_country || "-";
+    el("d_source").textContent = `source: ${obj.source || "-"}`;
+
+    const alt = pickAlt(obj);
+    const ft = alt === null ? null : mToFt(alt);
+    el("d_alt").textContent = alt === null ? "-" : `${fmtNum(alt,0)} m`;
+    el("d_alt2").textContent = ft === null ? "-" : `${fmtNum(ft,0)} ft`;
+
+    const kmh = mpsToKmh(obj.velocity);
+    el("d_vel").textContent = kmh === null ? "-" : `${fmtNum(kmh,0)} km/h`;
+    el("d_vel2").textContent = obj.velocity == null ? "-" : `${fmtNum(obj.velocity,2)} m/s`;
+
+    el("d_head").textContent = obj.heading == null ? "-" : `${fmtNum(obj.heading,0)}°`;
+    el("d_vr").textContent = `V-Rate: ${obj.vertical_rate == null ? "-" : fmtNum(obj.vertical_rate,2) + " m/s"}`;
+
+    const lat = obj.latitude, lon = obj.longitude;
+    el("d_pos").textContent = (lat==null || lon==null) ? "-" : `${fmtNum(lat,4)}, ${fmtNum(lon,4)}`;
+    el("d_time").textContent = `last_contact: ${obj.last_contact ?? "-"}`;
+
+    // location_text/comment_text が返る場合は表示、なければ控えめに
+    const note = [
+      obj.location_text ? `Location: ${obj.location_text}` : null,
+      obj.comment_text ? obj.comment_text : null,
+    ].filter(Boolean).join(" / ");
+    // el("d_note").textContent = note || "（location/comment は未実装ならここは空でOKです）";
+
+    el("selLabel").textContent = `${callsign} (${icao24})`;
+
+    // map: 選択機へ寄せる
+    const nlat = Number(lat), nlon = Number(lon);
+    if (Number.isFinite(nlat) && Number.isFinite(nlon)){
+      map.setView([nlat, nlon], Math.max(map.getZoom(), 5));
+      const mk = markers.get(obj.icao24);
+      if (mk) mk.openPopup();
+    }
+  }
+
+  async function fetchPlanes(){
+    setStatus("Loading /planes ...");
+    const res = await fetch(PLANES_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error(`/planes failed: ${res.status}`);
+    const json = await res.json();
+
+    el("chipSource").textContent = json.source || "-";
+    el("chipTime").textContent = new Date().toLocaleTimeString();
+
+    planes = Array.isArray(json.planes) ? json.planes : [];
+    setStatus(`Loaded: ${planes.length} planes (source=${json.source || "-"})`);
+    applyFilter();
+  }
+
+  async function fetchTrack(icao24){
+    const res = await fetch(TRACK_URL(icao24), { cache: "no-store" });
+    const json = await res.json();
+    if (!res.ok){
+      return { error: true, ...json };
+    }
+    return json;
+  }
+
+  async function selectPlane(icao24){
+    selectedIcao24 = icao24;
+    // 一旦一覧側の選択表示を反映
+    applyFilter();
+
+    setDetailEmpty("Loading /track ...");
+    const t = await fetchTrack(icao24);
+    if (t.error){
+      setDetailEmpty(`追跡対象が見つかりませんでした: ${t.icao24 || icao24}`);
+      return;
+    }
+    renderDetail(t);
+
+    // 選択機のマーカーを強調（アイコン更新）
+    refreshMarkers();
+  }
+
+  function setAuto(on){
+    autoOn = on;
+    el("btnAuto").textContent = `自動更新: ${autoOn ? "ON" : "OFF"}`;
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    if (autoOn){
+      autoTimer = setInterval(() => fetchPlanes().catch(e => setStatus(String(e))), 15000);
+    }
+  }
+
+  function setTrack(on){
+    trackOn = on;
+    el("btnTrack").textContent = `追跡: ${trackOn ? "ON" : "OFF"}`;
+    el("trackChip").innerHTML = `tracking: <b>${trackOn ? "ON" : "OFF"}</b>`;
+
+    if (trackTimer) { clearInterval(trackTimer); trackTimer = null; }
+    if (trackOn){
+      trackTimer = setInterval(async () => {
+        if (!selectedIcao24) return;
+        const t = await fetchTrack(selectedIcao24);
+        if (!t.error){
+          renderDetail(t);
+          // 一覧と地図の選択機位置も更新したいので、planes側も軽く更新（重ければOFFでもOK）
+          // ここでは選択機のmarkerだけ更新
+          upsertMarker(t);
+        }
+      }, 8000);
+    }
+  }
+
+  // init
+  initMap();
+  setDetailEmpty("左の一覧から機体をクリックしてください。");
+
+  el("q").addEventListener("input", applyFilter);
+  el("btnRefresh").addEventListener("click", () => fetchPlanes().catch(e => setStatus(String(e))));
+  el("btnAuto").addEventListener("click", () => setAuto(!autoOn));
+  el("btnTrack").addEventListener("click", () => setTrack(!trackOn));
+
+  // first load
+  fetchPlanes().catch(e => setStatus(String(e)));
+</script>
+</body>
+</html>
