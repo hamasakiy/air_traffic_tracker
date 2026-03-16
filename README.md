@@ -1,6 +1,8 @@
 # Air Traffic Tracker
 
-OpenSky Network API を使って、飛行中の航空機一覧表示と機体追跡を行うアプリです。
+このアプリは、OpenSky Network API を利用して航空機の位置情報を取得します。
+
+一定間隔でデータを更新するため、連続してAPIへアクセスすると、一定時間後に取得できなくなることがあります。そのため、デフォルトでは保存してあるスナップショットファイルを参照するようにしています。
 
 このリポジトリでは、**AWS Lambda / API Gateway 向けの本体コード**を `src/` に置き、**ローカル実行**は `local_server.py` から同じ AWS 用ハンドラを呼び出す構成にしています。
 
@@ -121,3 +123,5 @@ sam deploy
 - OpenSky Network API
 - HTML / JavaScript
 
+## Screenshots
+![Tracking detail](tracking_detail.png)
